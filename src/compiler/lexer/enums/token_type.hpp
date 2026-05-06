@@ -1,0 +1,101 @@
+#pragma once
+
+enum class TokenType {
+    INT_LITERAL,
+    DOUBLE_LITERAL,
+    STRING_LITERAL,
+    BOOL_LITERAL,
+
+    IDENTIFIER,
+
+    MUT,
+    CONST,
+
+    NG,
+    AND_AND,
+    OR_OR,
+
+    VOID,
+    BOOL,
+    INT,
+    DOUBLE,
+    STRING,
+    OPTION,
+    RESULT,
+    ARRAY,
+    LIST,
+    MAP,
+    SET,
+
+    IF,
+    ELSE,
+    RETURN,
+    MATCH,
+
+    FN,
+    STRUCT,
+    ENUM,
+    CONTRACT,
+    EVENT,
+    SERVICE,
+    SERVER,
+    DATABASE,
+    QUERY,
+    GROUP,
+    ROUTE,
+    PUBLISH,
+    CONSUMER,
+
+    GET,
+    POST,
+    PUT,
+    DELETE,
+    PATCH,
+
+    OK,
+    ERR,
+    SOME,
+    NULL_LITERAL,
+
+    BODY,
+    SQL,
+    PRINT,
+
+    PLUS,
+    MINUS,
+    STAR,
+    SLASH,
+    PERCENT,
+
+    PLUS_EQ,
+    MINUS_EQ,
+    STAR_EQ,
+    SLASH_EQ,
+    PERCENT_EQ,
+
+    EQ_EQ,
+    NG_EQ,
+    LT,
+    GT,
+    LT_EQ,
+    GT_EQ,
+
+    EQ,
+    ARROW,
+    FAT_ARROW,
+    AS,
+    DOT,
+
+    COLON,
+    SEMICOLON,
+    QUESTION,
+    LBRACE,
+    RBRACE,
+    LPAREN,
+    RPAREN,
+    LBRACKET,
+    RBRACKET,
+
+    END_OF_FILE,
+    UNKNOWN,
+};
