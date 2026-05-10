@@ -4,8 +4,8 @@
 #include <string>
 #include <stdexcept>
 
-#include "../compiler/lexer/enums/token_type.hpp"
-#include "../compiler/lexer/lexer.hpp"
+#include "../src/compiler/lexer/enums/token_type.hpp"
+#include "../src/compiler/lexer/lexer.hpp"
 
 int tests_passed = 0;
 int tests_failed = 0;
