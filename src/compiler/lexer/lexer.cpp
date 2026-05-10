@@ -7,8 +7,7 @@ Lexer::Lexer(std::istream& input) : input_(input) {
     keywords_ = {
         {"true", TokenType::BOOL_LITERAL}, {"false", TokenType::BOOL_LITERAL},
 
-        {"mut", TokenType::MUT},
-        {"const", TokenType::CONST},
+        {"mut", TokenType::MUT}, {"const", TokenType::CONST},
 
         {"void", TokenType::VOID}, {"bool", TokenType::BOOL},
         {"int", TokenType::INT}, {"double", TokenType::DOUBLE},
@@ -26,7 +25,7 @@ Lexer::Lexer(std::istream& input) : input_(input) {
         {"server", TokenType::SERVER}, {"database", TokenType::DATABASE},
         {"query", TokenType::QUERY}, {"group", TokenType::GROUP},
         {"route", TokenType::ROUTE}, {"publish", TokenType::PUBLISH},
-        {"consumer", TokenType::CONSUMER},
+        {"consumer", TokenType::CONSUMER}, {"client", TokenType::CLIENT},
 
         {"GET", TokenType::GET}, {"POST", TokenType::POST},
         {"PUT", TokenType::PUT}, {"DELETE", TokenType::DELETE},
@@ -35,10 +34,8 @@ Lexer::Lexer(std::istream& input) : input_(input) {
         {"Ok", TokenType::OK}, {"Err", TokenType::ERR},
         {"Some", TokenType::SOME}, {"null", TokenType::NULL_LITERAL},
 
-        {"body", TokenType::BODY},
-        {"sql", TokenType::SQL},
-        {"print", TokenType::PRINT},
-        {"as", TokenType::AS}
+        {"body", TokenType::BODY}, {"sql", TokenType::SQL},
+        {"print", TokenType::PRINT}, {"as", TokenType::AS}
     };
 }
 

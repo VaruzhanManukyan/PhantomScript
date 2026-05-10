@@ -45,6 +45,7 @@ enum class TokenType {
     ROUTE,
     PUBLISH,
     CONSUMER,
+    CLIENT,
 
     GET,
     POST,
