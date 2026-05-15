@@ -233,6 +233,9 @@ std::vector<Token> Lexer::tokenize() {
                 case '.':
                     tokens.push_back({TokenType::DOT, ".", token_start_line, token_start_column});
                     break;
+                case ',':
+                    tokens.push_back({TokenType::COMMA, ",", token_start_line, token_start_column});
+                    break;
                 case '?':
                     tokens.push_back({TokenType::QUESTION, "?", token_start_line, token_start_column});
                     break;

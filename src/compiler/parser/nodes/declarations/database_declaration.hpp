@@ -2,7 +2,9 @@
 #include <string>
 #include <cstdint>
 
-struct DatabaseDeclaration {
+#include "declaration.hpp"
+
+struct DatabaseDeclaration : IDeclaration {
     std::string name_;
     std::string engine_;
     std::string host_;

@@ -1,10 +1,11 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "route_node.hpp"
 
 struct GroupNode {
     std::string base_name_;
-    std::vector<RouteNode> routes_;
+    std::vector<std::unique_ptr<RouteNode>> routes_;
 };

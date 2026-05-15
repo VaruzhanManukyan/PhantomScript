@@ -1,8 +1,14 @@
-//
-// Created by varuzhan on 5/14/26.
-//
+#pragma once
+#include "expression.hpp"
+#include <memory>
+#include <string>
 
-#ifndef PHANTOMSCRIPT_ASSIGNMENT_EXPRESSION_HPP
-#define PHANTOMSCRIPT_ASSIGNMENT_EXPRESSION_HPP
+struct AssignmentExpression : IExpression {
+    std::unique_ptr<IExpression> target_;
+    std::string operator_;
+    std::unique_ptr<IExpression> value_;
 
-#endif //PHANTOMSCRIPT_ASSIGNMENT_EXPRESSION_HPP
+    AssignmentExpression(std::unique_ptr<IExpression> target, std::string op, std::unique_ptr<IExpression> value)
+        : target_(std::move(target)), operator_(std::move(op)), value_(std::move(value)) {}
+    virtual ~AssignmentExpression() = default;
+};

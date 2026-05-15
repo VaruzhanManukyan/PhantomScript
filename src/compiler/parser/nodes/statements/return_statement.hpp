@@ -5,6 +5,6 @@
 #include "../expressions/expression.hpp"
 
 struct ReturnStatement : IStatement {
-    std::unique_ptr<IExpression> expression;
+    std::unique_ptr<IExpression> expression_;
     virtual ~ReturnStatement() = default;
 };

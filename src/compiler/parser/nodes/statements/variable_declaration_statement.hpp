@@ -2,7 +2,7 @@
 #include <memory>
 
 #include "statement.hpp"
-#include "../type/type_node.hpp"
+#include "../types/type_node.hpp"
 #include "../expressions/expression.hpp"
 
 struct VariableDeclarationStatement : IStatement {

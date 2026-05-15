@@ -8,7 +8,7 @@
 struct MatchCase {
     std::string pattern_name_;
     std::optional<std::string> bound_variable_;
-    std::optional<BlockStatement> body_;
+    std::unique_ptr<BlockStatement> body_;
 };
 
 struct MatchStatement : IStatement {

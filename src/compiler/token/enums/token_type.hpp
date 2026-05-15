@@ -85,6 +85,7 @@ enum class TokenType {
     ARROW,
     FAT_ARROW,
     AS,
+    COMMA,
     DOT,
 
     COLON,

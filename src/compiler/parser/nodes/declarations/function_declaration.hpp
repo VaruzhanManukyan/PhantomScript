@@ -20,7 +20,7 @@ struct FunctionDeclaration : IDeclaration {
 
     explicit FunctionDeclaration(
         std::string name,
-        std::vector<FunctionDeclaration> parameters,
+        std::vector<FunctionParameter> parameters,
         std::unique_ptr<TypeNode> return_type,
         std::unique_ptr<BlockStatement> body) :
             name_(std::move(name)),

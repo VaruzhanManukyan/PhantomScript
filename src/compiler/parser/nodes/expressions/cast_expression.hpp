@@ -2,7 +2,7 @@
 #include <memory>
 
 #include "expression.hpp"
-#include "../type/type_node.hpp"
+#include "../types/type_node.hpp"
 
 struct CastExpression : IExpression {
     std::unique_ptr<IExpression> value_;
