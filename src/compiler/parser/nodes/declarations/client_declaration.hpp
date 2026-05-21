@@ -13,9 +13,22 @@ struct ClientRequestNode {
     std::unique_ptr<TypeNode> return_type_;
 };
 
-struct ClientDeclaration : IDeclaration {
+class ClientDeclaration : public IDeclaration {
+public:
     std::string name_;
     std::string host_;
     std::int32_t port_;
     std::vector<ClientRequestNode> requests_;
+
+    explicit ClientDeclaration(
+        std::int32_t line,
+        std::int32_t column) :
+            port_(0),
+            IDeclaration(line, column) {}
+
+    void accept(IAstVisitor& visitor) override {
+        visitor.visit(*this);
+    }
+
+    virtual ~ClientDeclaration() = default;
 };

@@ -8,6 +8,7 @@
 #include "nodes/statements/return_statement.hpp"
 #include "nodes/statements/if_statement.hpp"
 #include "nodes/statements/match_statement.hpp"
+#include "nodes/statements/publish_statement.hpp"
 #include "nodes/statements/print_statement.hpp"
 #include "nodes/expressions/assignment_expression.hpp"
 #include "nodes/expressions/binary_expression.hpp"
@@ -21,9 +22,9 @@
 #include "nodes/expressions/double_literal_expression.hpp"
 #include "nodes/expressions/string_literal_expression.hpp"
 #include "nodes/expressions/identifier_expression.hpp"
+#include "nodes/expressions/struct_instantiation_expression.hpp"
 
-Parser::Parser(std::vector<Token> tokens) : tokens_(std::move(tokens)) {
-}
+Parser::Parser(std::vector<Token> tokens) : tokens_(std::move(tokens)) {}
 
 inline bool Parser::is_at_end() const {
     return peek().type == TokenType::END_OF_FILE;
@@ -119,7 +120,7 @@ std::unique_ptr<ProgramNode> Parser::parse() {
         }
     }
 
-    return std::make_unique<ProgramNode>(std::move(declarations));
+    return std::make_unique<ProgramNode>(std::move(declarations), 0, 0);
 }
 
 inline std::int32_t Parser::parse_int_literal(const Token& token) {
@@ -153,10 +154,17 @@ inline std::unique_ptr<TypeNode> Parser::parse_type() {
         TokenType::OPTION, TokenType::RESULT, TokenType::ARRAY,
         TokenType::LIST, TokenType::MAP, TokenType::SET
     })) {
-        throw ParseException("Expect type name at line " + std::to_string(peek().line));
+        throw ParseException("Expect type name at line " + std::to_string(peek().line) +
+                             ", column " + std::to_string(peek().column));
     }
+
     const Token& base_type = previous();
-    std::unique_ptr<TypeNode> type_node = std::make_unique<TypeNode>(base_type.lexeme);
+
+    std::unique_ptr<TypeNode> type_node = std::make_unique<TypeNode>(
+        base_type.lexeme,
+        base_type.line,
+        base_type.column
+    );
 
     if (match({TokenType::LBRACKET})) {
         do {
@@ -170,6 +178,9 @@ inline std::unique_ptr<TypeNode> Parser::parse_type() {
 }
 
 inline std::unique_ptr<IDeclaration> Parser::parse_declaration() {
+    if (match({TokenType::IMPORT})) {
+        return parse_import();
+    }
     if (match({TokenType::FN})) {
         return parse_function();
     }
@@ -203,6 +214,19 @@ inline std::unique_ptr<IDeclaration> Parser::parse_declaration() {
 
     throw ParseException("Unexpected token at top level: '" + peek().lexeme +
         "' at line " + std::to_string(peek().line));
+}
+
+inline std::unique_ptr<ImportDeclaration> Parser::parse_import() {
+    Token import_token = previous();
+
+    Token path_token = consume(TokenType::STRING_LITERAL, "Expect string literal for import path.");
+    consume(TokenType::SEMICOLON, "Expect ';' after import path.");
+
+    return std::make_unique<ImportDeclaration>(
+        path_token.lexeme,
+        import_token.line,
+        import_token.column
+    );
 }
 
 inline std::unique_ptr<RouteNode> Parser::parse_route() {
@@ -242,11 +266,17 @@ inline std::unique_ptr<FunctionDeclaration> Parser::parse_function() {
     consume(TokenType::ARROW, "Expect '->' before return type.");
     std::unique_ptr<TypeNode> return_type = parse_type();
 
-    consume(TokenType::LBRACE, "Expect '{' before function body.");
-    std::unique_ptr<BlockStatement> body = std::make_unique<BlockStatement>(parse_block());
+    const Token& lbrace = consume(TokenType::LBRACE, "Expect '{' before function body.");
+    std::unique_ptr<BlockStatement> body = std::make_unique<BlockStatement>(
+        parse_block(), lbrace.line, lbrace.column);
 
     return std::make_unique<FunctionDeclaration>(
-        name.lexeme, std::move(parameters), std::move(return_type), std::move(body)
+        name.lexeme,
+        std::move(parameters),
+        std::move(return_type),
+        std::move(body),
+        name.line,
+        name.column
     );
 }
 
@@ -265,7 +295,7 @@ inline std::unique_ptr<StructDeclaration> Parser::parse_struct() {
     }
 
     consume(TokenType::RBRACE, "Expect '}' after struct body.");
-    std::unique_ptr<StructDeclaration> struct_declaration = std::make_unique<StructDeclaration>();
+    std::unique_ptr<StructDeclaration> struct_declaration = std::make_unique<StructDeclaration>(name.line, name.column);
     struct_declaration->name_ = name.lexeme;
     struct_declaration->fields_ = std::move(fields);
 
@@ -287,7 +317,7 @@ inline std::unique_ptr<EnumDeclaration> Parser::parse_enum() {
 
     consume(TokenType::RBRACE, "Expect '}' after enum body.");
 
-    std::unique_ptr<EnumDeclaration> enum_declaration = std::make_unique<EnumDeclaration>();
+    std::unique_ptr<EnumDeclaration> enum_declaration = std::make_unique<EnumDeclaration>(name.line, name.column);
     enum_declaration->name_ = name.lexeme;
     enum_declaration->variants_ = std::move(variants);
 
@@ -310,7 +340,7 @@ inline std::unique_ptr<DataTransferObjectDeclaration> Parser::parse_contract_or_
 
     consume(TokenType::RBRACE, "Expect '}' after contract/event body.");
 
-    std::unique_ptr<DataTransferObjectDeclaration> dto = std::make_unique<DataTransferObjectDeclaration>();
+    std::unique_ptr<DataTransferObjectDeclaration> dto = std::make_unique<DataTransferObjectDeclaration>(name.line, name.column);
     dto->is_event_ = is_event;
     dto->name_ = name.lexeme;
     dto->fields_ = std::move(fields);
@@ -319,7 +349,7 @@ inline std::unique_ptr<DataTransferObjectDeclaration> Parser::parse_contract_or_
 }
 
 inline std::unique_ptr<QueryDeclaration> Parser::parse_query() {
-    Token name = consume(TokenType::IDENTIFIER, "Expect query name.");
+    const Token& name = consume(TokenType::IDENTIFIER, "Expect query name.");
     consume(TokenType::LPAREN, "Expect '(' after query name.");
 
     std::vector<FunctionParameter> parameters;
@@ -350,7 +380,7 @@ inline std::unique_ptr<QueryDeclaration> Parser::parse_query() {
     }
 
     consume(TokenType::RBRACE, "Expect '}' after query body.");
-    std::unique_ptr<QueryDeclaration> query = std::make_unique<QueryDeclaration>();
+    std::unique_ptr<QueryDeclaration> query = std::make_unique<QueryDeclaration>(name.line, name.column);
     query->name_ = name.lexeme;
     query->parameters_ = std::move(parameters);
     query->return_type_ = std::move(return_type);
@@ -362,7 +392,7 @@ inline std::unique_ptr<ClientDeclaration> Parser::parse_client() {
     const Token& name = consume(TokenType::IDENTIFIER, "Expect client name.");
     consume(TokenType::LBRACE, "Expect '{' before client body.");
 
-    std::unique_ptr<ClientDeclaration> client = std::make_unique<ClientDeclaration>();
+    std::unique_ptr<ClientDeclaration> client = std::make_unique<ClientDeclaration>(name.line, name.column);
     client->name_ = name.lexeme;
 
     while (!check(TokenType::RBRACE) && !is_at_end()) {
@@ -415,7 +445,7 @@ inline std::unique_ptr<ConsumerDeclaration> Parser::parse_consumer() {
     const Token& handler = consume(TokenType::IDENTIFIER, "Expect handler function name.");
     consume(TokenType::SEMICOLON, "Expect ';' after consumer declaration.");
 
-    std::unique_ptr<ConsumerDeclaration> consumer = std::make_unique<ConsumerDeclaration>();
+    std::unique_ptr<ConsumerDeclaration> consumer = std::make_unique<ConsumerDeclaration>(event_name.line, event_name.column);
     consumer->event_name_ = event_name.lexeme;
     consumer->handler_function_name_ = handler.lexeme;
     return consumer;
@@ -425,7 +455,7 @@ inline std::unique_ptr<ServiceDeclaration> Parser::parse_service() {
     const Token& name = consume(TokenType::IDENTIFIER, "Expect service name.");
     consume(TokenType::LBRACE, "Expect '{' before service body.");
 
-    std::unique_ptr<ServiceDeclaration> service = std::make_unique<ServiceDeclaration>();
+    std::unique_ptr<ServiceDeclaration> service = std::make_unique<ServiceDeclaration>(name.line, name.column);
     service->name_ = name.lexeme;
 
     while (!check(TokenType::RBRACE) && !is_at_end()) {
@@ -474,7 +504,7 @@ inline std::unique_ptr<DatabaseDeclaration> Parser::parse_database() {
     const Token& name = consume(TokenType::IDENTIFIER, "Expect database name.");
     consume(TokenType::LBRACE, "Expect '{' before database config.");
 
-    std::unique_ptr<DatabaseDeclaration> database = std::make_unique<DatabaseDeclaration>();
+    std::unique_ptr<DatabaseDeclaration> database = std::make_unique<DatabaseDeclaration>(name.line, name.column);
     database->name_ = name.lexeme;
 
     while (!check(TokenType::RBRACE) && !is_at_end()) {
@@ -518,13 +548,19 @@ inline std::unique_ptr<IStatement> Parser::parse_statement() {
     if (match({TokenType::PRINT})) {
         return parse_print_statement();
     }
+    if (match({TokenType::PUBLISH})) {
+        return parse_publish_statement();
+    }
     if (match({TokenType::LBRACE})) {
-        return std::make_unique<BlockStatement>(parse_block());
+        const Token& lbrace = previous();
+        return std::make_unique<BlockStatement>(parse_block(), lbrace.line, lbrace.column);
     }
 
     std::unique_ptr<IExpression> expression = parse_expression();
+    const std::int32_t expr_line   = expression->line_;
+    const std::int32_t expr_column = expression->column_;
     consume(TokenType::SEMICOLON, "Expect ';' after expression.");
-    return std::make_unique<ExpressionStatement>(std::move(expression));
+    return std::make_unique<ExpressionStatement>(std::move(expression), expr_line, expr_column);
 }
 
 inline std::vector<std::unique_ptr<IStatement>> Parser::parse_block() {
@@ -547,43 +583,62 @@ inline std::unique_ptr<IStatement> Parser::parse_variable_declaration(bool is_mu
     }
 
     consume(TokenType::SEMICOLON, "Expect ';' after variable declaration.");
-    return std::make_unique<VariableDeclarationStatement>(is_mutable, name.lexeme, std::move(type),
-                                                          std::move(initializer));
+    return std::make_unique<VariableDeclarationStatement>(
+        is_mutable,
+        name.lexeme,
+        std::move(type),
+        std::move(initializer),
+        name.line,
+        name.column);
 }
 
 inline std::unique_ptr<IStatement> Parser::parse_return_statement() {
+    const Token& keyword = previous();
+
     std::unique_ptr<IExpression> value = nullptr;
     if (!check(TokenType::SEMICOLON)) {
         value = parse_expression();
     }
     consume(TokenType::SEMICOLON, "Expect ';' after return value.");
-    std::unique_ptr<ReturnStatement> statement = std::make_unique<ReturnStatement>();
+
+    std::unique_ptr<ReturnStatement> statement = std::make_unique<ReturnStatement>(keyword.line, keyword.column);
     statement->expression_ = std::move(value);
     return statement;
 }
 
 inline std::unique_ptr<IStatement> Parser::parse_if_statement() {
+    const Token& keyword = previous();
+
     consume(TokenType::LPAREN, "Expect '(' after 'if'.");
     std::unique_ptr<IExpression> condition = parse_expression();
     consume(TokenType::RPAREN, "Expect ')' after if condition.");
 
-    consume(TokenType::LBRACE, "Expect '{' before if body.");
-    std::unique_ptr<BlockStatement> than_branch = std::make_unique<BlockStatement>(parse_block());
+    const Token& then_brace = consume(TokenType::LBRACE, "Expect '{' before if body.");
+    std::unique_ptr<BlockStatement> than_branch = std::make_unique<BlockStatement>(
+        parse_block(), then_brace.line, then_brace.column);
 
     std::unique_ptr<IStatement> else_branch = nullptr;
     if (match({TokenType::ELSE})) {
         if (match({TokenType::IF})) {
             else_branch = parse_if_statement();
         } else {
-            consume(TokenType::LBRACE, "Expect '{' before else body.");
-            else_branch = std::make_unique<BlockStatement>(parse_block());
+            const Token& else_brace = consume(TokenType::LBRACE, "Expect '{' before else body.");
+            else_branch = std::make_unique<BlockStatement>(
+                parse_block(), else_brace.line, else_brace.column);
         }
     }
 
-    return std::make_unique<IfStatement>(std::move(condition), std::move(than_branch), std::move(else_branch));
+    return std::make_unique<IfStatement>(
+        std::move(condition),
+        std::move(than_branch),
+        std::move(else_branch),
+        keyword.line,
+        keyword.column);
 }
 
 inline std::unique_ptr<IStatement> Parser::parse_match_statement() {
+    const Token& keyword = previous();
+
     std::unique_ptr<IExpression> expression = parse_expression();
     consume(TokenType::LBRACE, "Expect '{' before match cases.");
 
@@ -606,20 +661,57 @@ inline std::unique_ptr<IStatement> Parser::parse_match_statement() {
         }
 
         consume(TokenType::FAT_ARROW, "Expect '=>' after match pattern.");
-        consume(TokenType::LBRACE, "Expect '{' before case body.");
-        std::unique_ptr<BlockStatement> body = std::make_unique<BlockStatement>(parse_block());
+        const Token& case_brace = consume(TokenType::LBRACE, "Expect '{' before case body.");
+        std::unique_ptr<BlockStatement> body = std::make_unique<BlockStatement>(
+            parse_block(), case_brace.line, case_brace.column);
 
         cases.push_back({pattern_name, bound_variable, std::move(body)});
     }
 
     consume(TokenType::RBRACE, "Expect '}' after match cases.");
-    return std::make_unique<MatchStatement>(std::move(expression), std::move(cases));
+    return std::make_unique<MatchStatement>(
+        std::move(expression),
+        std::move(cases),
+        keyword.line,
+        keyword.column);
+}
+
+inline std::unique_ptr<IStatement> Parser::parse_publish_statement() {
+    const Token& keyword = previous();
+
+    const Token& event_name = consume(TokenType::IDENTIFIER, "Expect event name after 'publish'.");
+    consume(TokenType::LBRACE, "Expect '{' before publish body.");
+
+    std::vector<StructInstantiationExpression::FieldInit> fields;
+    while (!check(TokenType::RBRACE) && !is_at_end()) {
+        Token field_name = consume(TokenType::IDENTIFIER, "Expect field name.");
+        consume(TokenType::COLON, "Expect ':' after field name.");
+
+        std::unique_ptr<IExpression> value = parse_expression();
+        consume(TokenType::SEMICOLON, "Expect ';' after field value.");
+
+        fields.push_back({field_name.lexeme, std::move(value)});
+    }
+
+    consume(TokenType::RBRACE, "Expect '}' after publish body.");
+    consume(TokenType::SEMICOLON, "Expect ';' after publish statement.");
+
+    return std::make_unique<PublishStatement>(
+        event_name.lexeme,
+        std::move(fields),
+        keyword.line,
+        keyword.column);
 }
 
 inline std::unique_ptr<IStatement> Parser::parse_print_statement() {
+    const Token& keyword = previous();
+
     std::unique_ptr<IExpression> value = parse_expression();
     consume(TokenType::SEMICOLON, "Expect ';' after print expression.");
-    return std::make_unique<PrintStatement>(std::move(value));
+    return std::make_unique<PrintStatement>(
+        std::move(value),
+        keyword.line,
+        keyword.column);
 }
 
 inline std::unique_ptr<IExpression> Parser::parse_expression() {
@@ -635,7 +727,12 @@ inline std::unique_ptr<IExpression> Parser::parse_assignment() {
     })) {
         const Token& equals = previous();
         std::unique_ptr<IExpression> value = parse_assignment();
-        return std::make_unique<AssignmentExpression>(std::move(expression), equals.lexeme, std::move(value));
+        return std::make_unique<AssignmentExpression>(
+            std::move(expression),
+            equals.lexeme,
+            std::move(value),
+            equals.line,
+            equals.column);
     }
 
     return expression;
@@ -646,7 +743,12 @@ inline std::unique_ptr<IExpression> Parser::parse_logical_or() {
     while (match({TokenType::OR_OR})) {
         const Token& operator_ = previous();
         std::unique_ptr<IExpression> right = parse_logical_and();
-        expression = std::make_unique<BinaryExpression>(std::move(expression), operator_.lexeme, std::move(right));
+        expression = std::make_unique<BinaryExpression>(
+            std::move(expression),
+            operator_.lexeme,
+            std::move(right),
+            operator_.line,
+            operator_.column);
     }
     return expression;
 }
@@ -656,7 +758,12 @@ inline std::unique_ptr<IExpression> Parser::parse_logical_and() {
     while (match({TokenType::AND_AND})) {
         const Token& operator_ = previous();
         std::unique_ptr<IExpression> right = parse_equality();
-        expression = std::make_unique<BinaryExpression>(std::move(expression), operator_.lexeme, std::move(right));
+        expression = std::make_unique<BinaryExpression>(
+            std::move(expression),
+            operator_.lexeme,
+            std::move(right),
+            operator_.line,
+            operator_.column);
     }
     return expression;
 }
@@ -666,7 +773,12 @@ inline std::unique_ptr<IExpression> Parser::parse_equality() {
     while (match({TokenType::EQ_EQ, TokenType::NG_EQ})) {
         const Token& operator_ = previous();
         std::unique_ptr<IExpression> right = parse_comparison();
-        expression = std::make_unique<BinaryExpression>(std::move(expression), operator_.lexeme, std::move(right));
+        expression = std::make_unique<BinaryExpression>(
+            std::move(expression),
+            operator_.lexeme,
+            std::move(right),
+            operator_.line,
+            operator_.column);
     }
     return expression;
 }
@@ -676,7 +788,12 @@ inline std::unique_ptr<IExpression> Parser::parse_comparison() {
     while (match({TokenType::GT, TokenType::GT_EQ, TokenType::LT, TokenType::LT_EQ})) {
         const Token& operator_ = previous();
         std::unique_ptr<IExpression> right = parse_term();
-        expression = std::make_unique<BinaryExpression>(std::move(expression), operator_.lexeme, std::move(right));
+        expression = std::make_unique<BinaryExpression>(
+            std::move(expression),
+            operator_.lexeme,
+            std::move(right),
+            operator_.line,
+            operator_.column);
     }
     return expression;
 }
@@ -686,7 +803,12 @@ inline std::unique_ptr<IExpression> Parser::parse_term() {
     while (match({TokenType::PLUS, TokenType::MINUS})) {
         const Token& operator_ = previous();
         std::unique_ptr<IExpression> right = parse_factor();
-        expression = std::make_unique<BinaryExpression>(std::move(expression), operator_.lexeme, std::move(right));
+        expression = std::make_unique<BinaryExpression>(
+            std::move(expression),
+            operator_.lexeme,
+            std::move(right),
+            operator_.line,
+            operator_.column);
     }
     return expression;
 }
@@ -696,7 +818,12 @@ inline std::unique_ptr<IExpression> Parser::parse_factor() {
     while (match({TokenType::STAR, TokenType::SLASH, TokenType::PERCENT})) {
         const Token& operator_ = previous();
         std::unique_ptr<IExpression> right = parse_unary();
-        expression = std::make_unique<BinaryExpression>(std::move(expression), operator_.lexeme, std::move(right));
+        expression = std::make_unique<BinaryExpression>(
+            std::move(expression),
+            operator_.lexeme,
+            std::move(right),
+            operator_.line,
+            operator_.column);
     }
     return expression;
 }
@@ -705,7 +832,11 @@ inline std::unique_ptr<IExpression> Parser::parse_unary() {
     if (match({TokenType::NG, TokenType::MINUS})) {
         const Token& operator_ = previous();
         std::unique_ptr<IExpression> right = parse_unary();
-        return std::make_unique<UnaryExpression>(operator_.lexeme, std::move(right));
+        return std::make_unique<UnaryExpression>(
+            operator_.lexeme,
+            std::move(right),
+            operator_.line,
+            operator_.column);
     }
     return parse_call();
 }
@@ -715,6 +846,7 @@ inline std::unique_ptr<IExpression> Parser::parse_call() {
 
     while (true) {
         if (match({TokenType::LPAREN})) {
+            const Token& lparen = previous();
             std::vector<std::unique_ptr<IExpression>> args;
             if (!check(TokenType::RPAREN)) {
                 do {
@@ -723,13 +855,26 @@ inline std::unique_ptr<IExpression> Parser::parse_call() {
                 while (match({TokenType::COMMA}));
             }
             consume(TokenType::RPAREN, "Expect ')' after arguments.");
-            expression = std::make_unique<CallExpression>(std::move(expression), std::move(args));
+            expression = std::make_unique<CallExpression>(
+                std::move(expression),
+                std::move(args),
+                lparen.line,
+                lparen.column);
         } else if (match({TokenType::DOT})) {
             const Token& name = consume(TokenType::IDENTIFIER, "Expect property name after '.'.");
-            expression = std::make_unique<MemberAccessExpression>(std::move(expression), name.lexeme);
+            expression = std::make_unique<MemberAccessExpression>(
+                std::move(expression),
+                name.lexeme,
+                name.line,
+                name.column);
         } else if (match({TokenType::AS})) {
+            const Token& as_token = previous();
             std::unique_ptr<TypeNode> target_type = parse_type();
-            expression = std::make_unique<CastExpression>(std::move(expression), std::move(target_type));
+            expression = std::make_unique<CastExpression>(
+                std::move(expression),
+                std::move(target_type),
+                as_token.line,
+                as_token.column);
         } else {
             break;
         }
@@ -740,28 +885,72 @@ inline std::unique_ptr<IExpression> Parser::parse_call() {
 
 inline std::unique_ptr<IExpression> Parser::parse_primary() {
     if (match({TokenType::BOOL_LITERAL})) {
-        return std::make_unique<BoolLiteralExpression>(previous().lexeme == "true");
+        const Token& token = previous();
+        return std::make_unique<BoolLiteralExpression>(
+            token.lexeme == "true",
+            token.line,
+            token.column);
     }
     if (match({TokenType::NULL_LITERAL})) {
-        return std::make_unique<NullLiteralExpression>();
+        const Token& token = previous();
+        return std::make_unique<NullLiteralExpression>(
+            token.line,
+            token.column);
     }
     if (match({TokenType::INT_LITERAL})) {
-        return std::make_unique<IntLIteralExpression>(parse_int_literal(previous()));
+        const Token& token = previous();
+        return std::make_unique<IntLIteralExpression>(
+            parse_int_literal(token),
+            token.line,
+            token.column);
     }
     if (match({TokenType::DOUBLE_LITERAL})) {
-        return std::make_unique<DoubleLiteralExpression>(parse_double_literal(previous()));
+        const Token& token = previous();
+        return std::make_unique<DoubleLiteralExpression>(
+            parse_double_literal(token),
+            token.line,
+            token.column);
     }
     if (match({TokenType::STRING_LITERAL})) {
-        return std::make_unique<StringLiteralExpression>(std::move(previous().lexeme));
+        const Token& token = previous();
+        return std::make_unique<StringLiteralExpression>(
+            token.lexeme,
+            token.line,
+            token.column);
     }
     if (match({TokenType::IDENTIFIER})) {
-        return std::make_unique<IdentifierExpression>(previous().lexeme);
+        const Token& ident_token = previous();
+        if (check(TokenType::LBRACE)) {
+            return parse_struct_instantiation(ident_token.lexeme, ident_token.line, ident_token.column);
+        }
+        return std::make_unique<IdentifierExpression>(
+            ident_token.lexeme,
+            ident_token.line,
+            ident_token.column);
     }
     if (match({TokenType::LPAREN})) {
-        auto expr = parse_expression();
+        std::unique_ptr<IExpression> expression = parse_expression();
         consume(TokenType::RPAREN, "Expect ')' after expression.");
-        return expr;
+        return expression;
     }
 
     throw ParseException("Expect expression at line " + std::to_string(peek().line));
+}
+
+inline std::unique_ptr<IExpression> Parser::parse_struct_instantiation(const std::string& struct_name, std::int32_t line, std::int32_t column) {
+    consume(TokenType::LBRACE, "Expect '{' before struct instantiation body.");
+    std::vector<StructInstantiationExpression::FieldInit> fields;
+
+    while (!check(TokenType::RBRACE) && !is_at_end()) {
+        const Token& field_name = consume(TokenType::IDENTIFIER, "Expect field name.");
+        consume(TokenType::COLON, "Expect ':' after field name.");
+
+        std::unique_ptr<IExpression> value = parse_expression();
+        consume(TokenType::SEMICOLON, "Expect ';' after field value.");
+
+        fields.push_back({field_name.lexeme, std::move(value)});
+    }
+
+    consume(TokenType::RBRACE, "Expect '}' after struct instantiation body.");
+    return std::make_unique<StructInstantiationExpression>(struct_name, std::move(fields), line, column);
 }

@@ -11,14 +11,23 @@ struct MatchCase {
     std::unique_ptr<BlockStatement> body_;
 };
 
-struct MatchStatement : IStatement {
+class MatchStatement : public IStatement {
+public:
     std::unique_ptr<IExpression> expression_;
     std::vector<MatchCase> match_cases_;
 
     explicit MatchStatement(
         std::unique_ptr<IExpression> expression,
-        std::vector<MatchCase> match_cases) :
+        std::vector<MatchCase> match_cases,
+        std::int32_t line,
+        std::int32_t column) :
             expression_(std::move(expression)),
-            match_cases_(std::move(match_cases)) {}
+            match_cases_(std::move(match_cases)),
+            IStatement(line, column) {}
+
+    void accept(IAstVisitor& visitor) override {
+        visitor.visit(*this);
+    }
+
     virtual ~MatchStatement() = default;
 };

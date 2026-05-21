@@ -46,6 +46,7 @@ enum class TokenType {
     PUBLISH,
     CONSUMER,
     CLIENT,
+    IMPORT,
 
     GET,
     POST,

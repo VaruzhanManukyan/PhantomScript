@@ -4,11 +4,23 @@
 
 #include "expression.hpp"
 
-struct UnaryExpression : IExpression {
+class UnaryExpression : public IExpression {
+public:
     std::string operator_;
     std::unique_ptr<IExpression> right_;
 
-    UnaryExpression(std::string operator_, std::unique_ptr<IExpression> right) :
-    operator_(std::move(operator_)), right_(std::move(right)) {}
+    explicit UnaryExpression(
+        std::string operator_,
+        std::unique_ptr<IExpression> right,
+        std::int32_t line,
+        std::int32_t column) :
+            operator_(std::move(operator_)),
+            right_(std::move(right)),
+            IExpression(line, column) {}
+
+    void accept(IAstVisitor& visitor) override {
+        visitor.visit(*this);
+    }
+
     virtual ~UnaryExpression() = default;
 };

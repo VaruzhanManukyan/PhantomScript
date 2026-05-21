@@ -26,6 +26,7 @@ Lexer::Lexer(std::istream& input) : input_(input) {
         {"query", TokenType::QUERY}, {"group", TokenType::GROUP},
         {"route", TokenType::ROUTE}, {"publish", TokenType::PUBLISH},
         {"consumer", TokenType::CONSUMER}, {"client", TokenType::CLIENT},
+        {"import", TokenType::IMPORT},
 
         {"GET", TokenType::GET}, {"POST", TokenType::POST},
         {"PUT", TokenType::PUT}, {"DELETE", TokenType::DELETE},

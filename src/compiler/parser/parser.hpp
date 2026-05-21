@@ -5,6 +5,7 @@
 #include "../token/token.hpp"
 #include "nodes/expressions/expression.hpp"
 #include "nodes/declarations/declaration.hpp"
+#include "nodes/declarations/import_declaration.hpp"
 #include "nodes/declarations/function_declaration.hpp"
 #include "nodes/declarations/struct_declaration.hpp"
 #include "nodes/declarations/enum_declaration.hpp"
@@ -33,10 +34,10 @@ private:
     std::int32_t parse_int_literal(const Token& token);
     double parse_double_literal(const Token& token);
 
-
     std::unique_ptr<TypeNode> parse_type();
 
     std::unique_ptr<IDeclaration> parse_declaration();
+    std::unique_ptr<ImportDeclaration> parse_import();
     std::unique_ptr<RouteNode> parse_route();
     std::unique_ptr<FunctionDeclaration> parse_function();
     std::unique_ptr<StructDeclaration> parse_struct();
@@ -55,6 +56,7 @@ private:
     std::unique_ptr<IStatement> parse_if_statement();
     std::unique_ptr<IStatement> parse_match_statement();
     std::unique_ptr<IStatement> parse_print_statement();
+    std::unique_ptr<IStatement> parse_publish_statement();
 
     std::unique_ptr<IExpression> parse_expression();
     std::unique_ptr<IExpression> parse_assignment();
@@ -67,6 +69,10 @@ private:
     std::unique_ptr<IExpression> parse_unary();
     std::unique_ptr<IExpression> parse_call();
     std::unique_ptr<IExpression> parse_primary();
+    std::unique_ptr<IExpression> parse_struct_instantiation(
+        const std::string& struct_name,
+        std::int32_t line,
+        std::int32_t column);
 public:
     explicit Parser(std::vector<Token> tokens);
     std::unique_ptr<ProgramNode> parse();

@@ -3,9 +3,20 @@
 
 #include "expression.hpp"
 
-struct IntLIteralExpression : IExpression {
+class IntLIteralExpression : public IExpression {
+public:
     std::int32_t value_;
 
-    explicit IntLIteralExpression(std::int32_t value) : value_(value) {}
+    explicit IntLIteralExpression(
+        std::int32_t value,
+        std::int32_t line,
+        std::int32_t column) :
+            value_(value),
+            IExpression(line, column) {}
+
+    void accept(IAstVisitor& visitor) override {
+        visitor.visit(*this);
+    }
+
     virtual ~IntLIteralExpression() = default;
 };
