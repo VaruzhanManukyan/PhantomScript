@@ -1,0 +1,56 @@
+event UserCreated {
+    user_id: int;
+    email: string;
+}
+
+database PrimaryDb {
+    engine: "postgres";
+    host: "postgres";
+    port: 5443;
+    name: "main_db";
+}
+
+query insert_user(name: string, email: string) -> string {
+    sql:
+        INSERT INTO users (name, email) VALUES ($name, $email) RETURNING id;
+}
+
+service UserService {
+    server {
+        host: "0.0.0.0";
+        port: 8081;
+    }
+
+    database PrimaryDb;
+
+    route POST "/users/batch" -> batch_create_users;
+    publish UserCreated;
+}
+
+fn batch_create_users(prefix: string) -> string {
+    mut i: int = 1;
+    while (i <= 10) {
+        if (i == 5) {
+            i += 1;
+            continue;
+        }
+        if (i == 9) {
+            break;
+        }
+        mut generated_name: string = prefix + "_" + (i as string);
+        mut generated_email: string = prefix + "_" + (i as string) + "@example.com";
+        insert_user(generated_name, generated_email);
+        publish UserCreated {
+            user_id: i;
+            email: generated_email;
+        };
+        i += 1;
+    }
+    return "Batch execution finalized inside PhantomScript loop engine.";
+}
+
+fn handle_notification(msg: UserCreated) -> void {
+    print("Sending email");
+}
+
+consumer UserCreated -> handle_notification;

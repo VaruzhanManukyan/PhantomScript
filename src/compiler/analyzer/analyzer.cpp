@@ -1,8 +1,8 @@
-#include "analyzer.hpp"
 #include <iostream>
 #include <algorithm>
 #include <cctype>
 
+#include "analyzer.hpp"
 #include "../parser/nodes/declarations/program_node.hpp"
 #include "../parser/nodes/declarations/import_declaration.hpp"
 #include "../parser/nodes/declarations/function_declaration.hpp"
@@ -18,6 +18,11 @@
 #include "../parser/nodes/statements/variable_declaration_statement.hpp"
 #include "../parser/nodes/statements/return_statement.hpp"
 #include "../parser/nodes/statements/if_statement.hpp"
+#include "../parser/nodes/statements/while_statement.hpp"
+#include "../parser/nodes/statements/for_statement.hpp"
+#include "../parser/nodes/statements/for_in_statement.hpp"
+#include "../parser/nodes/statements/break_statement.hpp"
+#include "../parser/nodes/statements/continue_statement.hpp"
 #include "../parser/nodes/statements/match_statement.hpp"
 #include "../parser/nodes/statements/print_statement.hpp"
 #include "../parser/nodes/statements/block_statement.hpp"
@@ -27,15 +32,18 @@
 #include "../parser/nodes/expressions/unary_expression.hpp"
 #include "../parser/nodes/expressions/call_expression.hpp"
 #include "../parser/nodes/expressions/member_access_expression.hpp"
+#include "../parser/nodes/expressions/index_access_expression.hpp"
 #include "../parser/nodes/expressions/cast_expression.hpp"
 #include "../parser/nodes/expressions/identifier_expression.hpp"
 #include "../parser/nodes/expressions/struct_instantiation_expression.hpp"
+#include "../parser/nodes/expressions/array_literal_expression.hpp"
 
 void SemanticAnalyzer::report_error(const std::string& message, std::int32_t line, std::int32_t column) {
+    std::cerr << "SEMANTIC ERROR [" << line << ":" << column << "]: " << message << std::endl;
+
     errors_.emplace_back(message, line, column);
     throw SemanticException(message, line, column);
 }
-
 std::shared_ptr<Type> SemanticAnalyzer::resolve_type_node(TypeNode* node) {
     if (!node) return std::make_shared<Type>(Type{TypeKind::VOID, "void", {}});
 
@@ -57,7 +65,11 @@ std::shared_ptr<Type> SemanticAnalyzer::resolve_type_node(TypeNode* node) {
     else {
         if (env_.lookup_enum(node->base_name_)) {
             t->kind = TypeKind::ENUM;
-        } else {
+        }
+        else if (env_.has_database(node->base_name_)) {
+            t->kind = TypeKind::DATABASE;
+        }
+        else {
             auto struct_sym = env_.lookup_struct(node->base_name_);
             if (struct_sym) {
                 t->kind = struct_sym->kind;
@@ -73,6 +85,7 @@ std::shared_ptr<Type> SemanticAnalyzer::resolve_type_node(TypeNode* node) {
     }
     return t;
 }
+
 bool SemanticAnalyzer::analyze(ProgramNode& program) {
     errors_.clear();
 
@@ -89,6 +102,11 @@ bool SemanticAnalyzer::analyze(ProgramNode& program) {
                 visit(*db);
             } else if (auto* c = dynamic_cast<ClientDeclaration*>(decl.get())) {
                 visit(*c);
+            }
+            else if (auto* svc = dynamic_cast<ServiceDeclaration*>(decl.get())) {
+                for (const auto& nested_db : svc->database_) {
+                    visit(*nested_db);
+                }
             }
         }
 
@@ -365,6 +383,43 @@ void SemanticAnalyzer::visit(IfStatement& node) {
     if (node.else_branch_) node.else_branch_->accept(*this);
 }
 
+void SemanticAnalyzer::visit(WhileStatement& node) {
+    if (node.condition_) node.condition_->accept(*this);
+
+    loop_depth_++;
+    if (node.body_) node.body_->accept(*this);
+    loop_depth_--;
+}
+
+void SemanticAnalyzer::visit(ForStatement& node) {
+    if (node.init_) node.init_->accept(*this);
+    if (node.condition_) node.condition_->accept(*this);
+    if (node.increment_) node.increment_->accept(*this);
+
+    loop_depth_++;
+    if (node.body_) node.body_->accept(*this);
+    loop_depth_--;
+}
+
+void SemanticAnalyzer::visit(ForInStatement& node) {
+    if (node.iterable_) node.iterable_->accept(*this);
+
+    loop_depth_++;
+    if (node.body_) node.body_->accept(*this);
+    loop_depth_--;
+}
+
+void SemanticAnalyzer::visit(BreakStatement& node) {
+    if (loop_depth_ <= 0) {
+        report_error("Semantic Error: 'break' statement is not allowed outside of a loop block", node.line_, node.column_);
+    }
+}
+
+void SemanticAnalyzer::visit(ContinueStatement& node) {
+    if (loop_depth_ <= 0) {
+        report_error("Semantic Error: 'continue' statement is not allowed outside of a loop block", node.line_, node.column_);
+    }
+}
 void SemanticAnalyzer::visit(MatchStatement& node) {
     node.expression_->accept(*this);
     auto subject_type = current_expression_type_;
@@ -515,6 +570,16 @@ void SemanticAnalyzer::visit(MemberAccessExpression& node) {
     node.object_->accept(*this);
     auto obj_type = current_expression_type_;
 
+    if (obj_type->kind == TypeKind::ARRAY ||
+        obj_type->kind == TypeKind::LIST  ||
+        obj_type->kind == TypeKind::SET   ||
+        obj_type->kind == TypeKind::MAP) {
+        if (node.member_name_ == "length") {
+            current_expression_type_ = std::make_shared<Type>(Type{TypeKind::INT, "int", {}});
+            return;
+        }
+        }
+
     if (obj_type->kind == TypeKind::STRUCT || obj_type->kind == TypeKind::CONTRACT || obj_type->kind == TypeKind::EVENT) {
         auto struct_sym = env_.lookup_struct(obj_type->name);
         if (struct_sym) {
@@ -525,7 +590,34 @@ void SemanticAnalyzer::visit(MemberAccessExpression& node) {
             }
         }
     }
+
     report_error("Member selection evaluation context resolution failure: member identifier '" + node.member_name_ + "' is unmapped inside the target layout configuration.", node.line_, node.column_);
+}
+
+void SemanticAnalyzer::visit(IndexAccessExpression& node) {
+    node.object_->accept(*this);
+    auto obj_type = current_expression_type_;
+
+    if (obj_type->kind != TypeKind::ARRAY &&
+        obj_type->kind != TypeKind::LIST  &&
+        obj_type->kind != TypeKind::MAP) {
+        report_error(
+            "Index access requires array, list, or map type, got '" +
+            obj_type->to_string() + "'.",
+            node.line_, node.column_);
+        current_expression_type_ = std::make_shared<Type>(Type{TypeKind::UNKNOWN, "unknown", {}});
+        return;
+        }
+
+    node.index_->accept(*this);
+
+    if (obj_type->kind == TypeKind::MAP && obj_type->generic_args.size() >= 2) {
+        current_expression_type_ = obj_type->generic_args[1];
+    } else if (!obj_type->generic_args.empty()) {
+        current_expression_type_ = obj_type->generic_args[0];
+    } else {
+        current_expression_type_ = std::make_shared<Type>(Type{TypeKind::UNKNOWN, "unknown", {}});
+    }
 }
 
 void SemanticAnalyzer::visit(CastExpression& node) {
@@ -553,6 +645,31 @@ void SemanticAnalyzer::visit(DoubleLiteralExpression& node) {
 
 void SemanticAnalyzer::visit(StringLiteralExpression& node) {
     current_expression_type_ = std::make_shared<Type>(Type{TypeKind::STRING, "string", {}});
+}
+
+void SemanticAnalyzer::visit(ArrayLiteralExpression& node) {
+    std::shared_ptr<Type> elem_type = nullptr;
+
+    for (auto& elem : node.elements_) {
+        elem->accept(*this);
+        if (!elem_type) {
+            elem_type = current_expression_type_;
+        } else if (*current_expression_type_ != *elem_type) {
+            report_error(
+                "Array literal contains mixed types: expected '" +
+                elem_type->to_string() + "' but got '" +
+                current_expression_type_->to_string() + "'.",
+                node.line_, node.column_);
+        }
+    }
+
+    auto arr_type = std::make_shared<Type>();
+    arr_type->kind = TypeKind::ARRAY;
+    arr_type->name = "array";
+    if (elem_type) {
+        arr_type->generic_args.push_back(elem_type);
+    }
+    current_expression_type_ = arr_type;
 }
 
 void SemanticAnalyzer::visit(IdentifierExpression& node) {

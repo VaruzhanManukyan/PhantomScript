@@ -1,39 +1,61 @@
 #pragma once
-#include <vector>
 #include <string>
+#include <sstream>
 #include <memory>
-#include <cstdint>
+#include <vector>
+#include <set>
+#include <optional>
 #include <unordered_map>
 
-#include "ast_visitor.hpp"
-#include "environment.hpp"
-#include "exceptions/semantic_exception.hpp"
+#include "../analyzer/ast_visitor.hpp"
 
-class SemanticAnalyzer : public IAstVisitor {
+class ProgramNode;
+class TypeNode;
+
+struct CompilationArtifacts {
+    std::string hpp_code;
+    std::string cpp_code;
+    std::optional<std::string> dockerfile;
+    std::optional<std::string> docker_compose;
+    std::optional<std::string> cmake_lists;
+};
+
+class CodeGenerator : public IAstVisitor {
 private:
-    Environment env_;
-    std::vector<SemanticException> errors_;
-    std::shared_ptr<Type> current_expression_type_;
-    std::shared_ptr<Type> current_function_return_type_;
-    std::int32_t loop_depth_ = 0;
+    std::stringstream hpp_stream_;
+    std::stringstream cpp_stream_;
+    std::stringstream consumer_stream_;
+    std::set<std::string> required_headers_;
+    std::unordered_map<std::string, std::vector<std::string>> function_param_types_;
+    std::unordered_map<std::string, std::vector<std::string>> function_param_names_;
+    std::vector<DatabaseDeclaration*> all_parsed_databases_;
 
-    void report_error(const std::string& message, std::int32_t line = 1, std::int32_t column = 1);
-    std::shared_ptr<Type> resolve_type_node(TypeNode* node);
-    void check_cyclic_dependencies();
-    bool dfs_cycle_check(
-        const std::string& node,
-        std::unordered_map<std::string, int>& state,
-        const std::unordered_map<std::string, std::vector<std::string>>& graph
-    );
+    bool http_runtime_generated_ = false;
+    std::vector<std::string> service_names_;
+    int indent_level_ = 0;
+
+    bool uses_postgres_ = false;
+    bool uses_rabbitmq_ = false;
+    bool uses_service_ = false;
+
+    std::string indent() const;
+    std::string translate_type(TypeNode* type_node);
+
+    std::string default_cpp_value(const std::string& cpp_type) const;
+    std::string build_default_args(const std::string& fn_name) const;
+
+    std::string generate_dockerfile() const;
+    std::string generate_docker_compose() const;
+    std::string generate_cmake() const;
+    void generate_http_runtime();
 
 public:
-    SemanticAnalyzer() = default;
+    CodeGenerator() = default;
+    virtual ~CodeGenerator() = default;
 
-    bool analyze(ProgramNode& program);
-    const std::vector<SemanticException>& get_errors() const { return errors_; }
+    CompilationArtifacts generate(ProgramNode& program, const std::string& source_stem = "output");
 
     void visit(ProgramNode& node) override;
-    void visit(ImportDeclaration& node) override;
     void visit(FunctionDeclaration& node) override;
     void visit(StructDeclaration& node) override;
     void visit(EnumDeclaration& node) override;
@@ -43,6 +65,7 @@ public:
     void visit(ConsumerDeclaration& node) override;
     void visit(ServiceDeclaration& node) override;
     void visit(DatabaseDeclaration& node) override;
+    void visit(ImportDeclaration& node) override;
 
     void visit(ExpressionStatement& node) override;
     void visit(VariableDeclarationStatement& node) override;

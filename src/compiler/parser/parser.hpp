@@ -54,6 +54,11 @@ private:
     std::unique_ptr<IStatement> parse_variable_declaration(bool is_mutable);
     std::unique_ptr<IStatement> parse_return_statement();
     std::unique_ptr<IStatement> parse_if_statement();
+    std::unique_ptr<IStatement> parse_while_statement();
+    std::unique_ptr<IStatement> parse_for_statement();
+    std::unique_ptr<IStatement> parse_for_in_statement();
+    std::unique_ptr<IStatement> parse_break_statement();
+    std::unique_ptr<IStatement> parse_continue_statement();
     std::unique_ptr<IStatement> parse_match_statement();
     std::unique_ptr<IStatement> parse_print_statement();
     std::unique_ptr<IStatement> parse_publish_statement();

@@ -29,6 +29,11 @@ enum class TokenType {
 
     IF,
     ELSE,
+    WHILE,
+    FOR,
+    IN,
+    BREAK,
+    CONTINUE,
     RETURN,
     MATCH,
 

@@ -17,7 +17,10 @@ Lexer::Lexer(std::istream& input) : input_(input) {
         {"set", TokenType::SET},
 
         {"if", TokenType::IF}, {"else", TokenType::ELSE},
-        {"return", TokenType::RETURN}, {"match", TokenType::MATCH},
+        {"while", TokenType::WHILE}, {"for", TokenType::FOR},
+        {"in", TokenType::IN}, {"break", TokenType::BREAK},
+        {"continue", TokenType::CONTINUE}, {"return", TokenType::RETURN},
+        {"match", TokenType::MATCH},
 
         {"fn", TokenType::FN}, {"struct", TokenType::STRUCT},
         {"enum", TokenType::ENUM}, {"contract", TokenType::CONTRACT},
@@ -99,7 +102,7 @@ std::vector<Token> Lexer::tokenize() {
                 continue;
             }
 
-            if (std::isalpha(static_cast<unsigned char>(symbol)) || symbol == '_') {
+            if (std::isalpha(static_cast<unsigned char>(symbol)) || symbol == '_' || symbol == '$') {
                 buffer.clear();
                 buffer += advance();
                 state = LexerState::IN_IDENTIFIER;
@@ -275,7 +278,7 @@ std::vector<Token> Lexer::tokenize() {
         }
 
         if (state == LexerState::IN_IDENTIFIER) {
-            if (std::isalnum(static_cast<unsigned char>(symbol)) || symbol == '_') {
+            if (std::isalnum(static_cast<unsigned char>(symbol)) || symbol == '_' || symbol == '$') {
                 buffer += advance();
             } else {
                 auto it = keywords_.find(buffer);

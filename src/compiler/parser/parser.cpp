@@ -7,6 +7,12 @@
 #include "nodes/statements/variable_declaration_statement.hpp"
 #include "nodes/statements/return_statement.hpp"
 #include "nodes/statements/if_statement.hpp"
+#include "nodes/statements/for_statement.hpp"
+#include "nodes/statements/while_statement.hpp"
+#include "nodes/statements/for_statement.hpp"
+#include "nodes/statements/for_in_statement.hpp"
+#include "nodes/statements/break_statement.hpp"
+#include "nodes/statements/continue_statement.hpp"
 #include "nodes/statements/match_statement.hpp"
 #include "nodes/statements/publish_statement.hpp"
 #include "nodes/statements/print_statement.hpp"
@@ -15,12 +21,14 @@
 #include "nodes/expressions/unary_expression.hpp"
 #include "nodes/expressions/call_expression.hpp"
 #include "nodes/expressions/member_access_expression.hpp"
+#include "nodes/expressions/index_access_expression.hpp"
 #include "nodes/expressions/cast_expression.hpp"
 #include "nodes/expressions/bool_literal_expression.hpp"
 #include "nodes/expressions/null_literal_expression.hpp"
 #include "nodes/expressions/int_literal_expression.hpp"
 #include "nodes/expressions/double_literal_expression.hpp"
 #include "nodes/expressions/string_literal_expression.hpp"
+#include "nodes/expressions/array_literal_expression.hpp"
 #include "nodes/expressions/identifier_expression.hpp"
 #include "nodes/expressions/struct_instantiation_expression.hpp"
 
@@ -473,7 +481,8 @@ inline std::unique_ptr<ServiceDeclaration> Parser::parse_service() {
             }
             consume(TokenType::RBRACE, "Expect '}' after server config.");
         } else if (match({TokenType::DATABASE})) {
-            service->database_.push_back(parse_database());
+            consume(TokenType::IDENTIFIER, "Expect database name after 'database' inside service.");
+            consume(TokenType::SEMICOLON, "Expect ';' after database reference.");
         } else if (match({TokenType::ROUTE})) {
             service->flat_routes_.push_back(parse_route());
         } else if (match({TokenType::GROUP})) {
@@ -538,6 +547,21 @@ inline std::unique_ptr<IStatement> Parser::parse_statement() {
     }
     if (match({TokenType::IF})) {
         return parse_if_statement();
+    }
+    if (match({TokenType::WHILE})) {
+        return parse_while_statement();
+    }
+    if (match({TokenType::FOR})) {
+        if (check(TokenType::LPAREN)) {
+            return parse_for_statement();
+        }
+        return parse_for_in_statement();
+    }
+    if (match({TokenType::BREAK})) {
+        return parse_break_statement();
+    }
+    if (match({TokenType::CONTINUE})) {
+        return parse_continue_statement();
     }
     if (match({TokenType::RETURN})) {
         return parse_return_statement();
@@ -634,6 +658,95 @@ inline std::unique_ptr<IStatement> Parser::parse_if_statement() {
         std::move(else_branch),
         keyword.line,
         keyword.column);
+}
+
+std::unique_ptr<IStatement> Parser::parse_while_statement() {
+    const Token& keyword = previous();
+
+    consume(TokenType::LPAREN, "Expect '(' after 'while'.");
+    std::unique_ptr<IExpression> condition = parse_expression();
+    consume(TokenType::RPAREN, "Expect ')' after while condition.");
+
+    const Token& lbrace = consume(TokenType::LBRACE, "Expect '{' before while body.");
+    std::unique_ptr<BlockStatement> body = std::make_unique<BlockStatement>(
+        parse_block(), lbrace.line, lbrace.column);
+
+    return std::make_unique<WhileStatement>(
+        std::move(condition),
+        std::move(body),
+        keyword.line, keyword.column);
+}
+
+std::unique_ptr<IStatement> Parser::parse_for_statement() {
+    const Token& keyword = previous();
+    consume(TokenType::LPAREN, "Expect '(' after 'for'.");
+
+    std::unique_ptr<IStatement> init = nullptr;
+    if (match({TokenType::MUT})) {
+        init = parse_variable_declaration(true);
+    } else if (match({TokenType::CONST})) {
+        init = parse_variable_declaration(false);
+    } else if (!check(TokenType::SEMICOLON)) {
+        auto expr = parse_expression();
+        const std::int32_t el = expr->line_, ec = expr->column_;
+        consume(TokenType::SEMICOLON, "Expect ';' after for init expression.");
+        init = std::make_unique<ExpressionStatement>(std::move(expr), el, ec);
+    } else {
+        consume(TokenType::SEMICOLON, "Expect ';' in for loop.");
+    }
+
+    std::unique_ptr<IExpression> condition = nullptr;
+    if (!check(TokenType::SEMICOLON)) {
+        condition = parse_expression();
+    }
+    consume(TokenType::SEMICOLON, "Expect ';' after for condition.");
+
+    std::unique_ptr<IExpression> increment = nullptr;
+    if (!check(TokenType::RPAREN)) {
+        increment = parse_expression();
+    }
+    consume(TokenType::RPAREN, "Expect ')' after for clauses.");
+
+    const Token& lbrace = consume(TokenType::LBRACE, "Expect '{' before for body.");
+    std::unique_ptr<BlockStatement> body = std::make_unique<BlockStatement>(
+        parse_block(), lbrace.line, lbrace.column);
+
+    return std::make_unique<ForStatement>(
+        std::move(init),
+        std::move(condition),
+        std::move(increment),
+        std::move(body),
+        keyword.line, keyword.column);
+}
+
+std::unique_ptr<IStatement> Parser::parse_for_in_statement() {
+    const Token& keyword = previous();
+
+    const Token& var = consume(TokenType::IDENTIFIER, "Expect variable name after 'for'.");
+    consume(TokenType::IN, "Expect 'in' after loop variable.");
+    std::unique_ptr<IExpression> iterable = parse_expression();
+
+    const Token& lbrace = consume(TokenType::LBRACE, "Expect '{' before for body.");
+    std::unique_ptr<BlockStatement> body = std::make_unique<BlockStatement>(
+        parse_block(), lbrace.line, lbrace.column);
+
+    return std::make_unique<ForInStatement>(
+        var.lexeme,
+        std::move(iterable),
+        std::move(body),
+        keyword.line, keyword.column);
+}
+
+inline std::unique_ptr<IStatement> Parser::parse_break_statement() {
+    const Token& keyword = previous();
+    consume(TokenType::SEMICOLON, "Expect ';' after 'break'.");
+    return std::make_unique<BreakStatement>(keyword.line, keyword.column);
+}
+
+inline std::unique_ptr<IStatement> Parser::parse_continue_statement() {
+    const Token& keyword = previous();
+    consume(TokenType::SEMICOLON, "Expect ';' after 'continue'.");
+    return std::make_unique<ContinueStatement>(keyword.line, keyword.column);
 }
 
 inline std::unique_ptr<IStatement> Parser::parse_match_statement() {
@@ -875,6 +988,15 @@ inline std::unique_ptr<IExpression> Parser::parse_call() {
                 std::move(target_type),
                 as_token.line,
                 as_token.column);
+        } else if (match({TokenType::LBRACKET})) {
+            const Token& lbracket = previous();
+            std::unique_ptr<IExpression> index = parse_expression();
+            consume(TokenType::RBRACKET, "Expect ']' after index expression.");
+            expression = std::make_unique<IndexAccessExpression>(
+                std::move(expression),
+                std::move(index),
+                lbracket.line,
+                lbracket.column);
         } else {
             break;
         }
@@ -927,6 +1049,22 @@ inline std::unique_ptr<IExpression> Parser::parse_primary() {
             ident_token.lexeme,
             ident_token.line,
             ident_token.column);
+    }
+    if (match({TokenType::LBRACKET})) {
+        const Token& lbracket = previous();
+        std::vector<std::unique_ptr<IExpression>> elements;
+
+        if (!check(TokenType::RBRACKET)) {
+            do {
+                elements.push_back(parse_expression());
+            } while (match({TokenType::COMMA}));
+        }
+
+        consume(TokenType::RBRACKET, "Expect ']' after array elements.");
+        return std::make_unique<ArrayLiteralExpression>(
+            std::move(elements),
+            lbracket.line,
+            lbracket.column);
     }
     if (match({TokenType::LPAREN})) {
         std::unique_ptr<IExpression> expression = parse_expression();
